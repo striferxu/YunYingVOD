@@ -6,7 +6,8 @@
 ///
 /// 服务端行为：
 ///   * 只返回**未过期**的令牌，查询时顺手清理过期行
-///   * `current` 字段目前恒为 false（P1 已知限制，换 session 后无法反查来源令牌）
+///   * 服务端 `current` 字段恒为 false（P1 未传 current_token_id），
+///     所以本页改为**用本地保存的 token id 比对**来标记当前设备
 ///   * 踢别人的设备返回 403，不存在的 id 返回 404
 library;
 
@@ -15,6 +16,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/models/user.dart';
+import '../../core/session_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/state_views.dart';
 
@@ -36,6 +38,10 @@ class _DevicesPageState extends State<DevicesPage> {
   /// 正在踢除的设备 id，用于按钮转圈
   int? _revoking;
 
+  /// 本机保存的 app token id。用于标记"当前设备"——
+  /// 服务端 current 字段恒为 false，只能靠本地 id 比对。
+  int? _ownTokenId;
+
   static final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
   @override
@@ -51,6 +57,7 @@ class _DevicesPageState extends State<DevicesPage> {
       _errorDetail = null;
     });
     try {
+      final own = await SessionStore().readAppToken();
       final resp = await _api.get('/api/app/tokens');
       final items = (resp.data['items'] as List?) ?? const [];
       final list = items
@@ -60,6 +67,7 @@ class _DevicesPageState extends State<DevicesPage> {
       if (!mounted) return;
       setState(() {
         _devices = list;
+        _ownTokenId = own?.id;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -101,6 +109,11 @@ class _DevicesPageState extends State<DevicesPage> {
     setState(() => _revoking = d.id);
     try {
       await _api.delete('/api/app/tokens/${d.id}');
+      // 如果移除的是本机设备，本地存的 token 也要一并清掉，
+      // 否则下次启动会拿一个已作废的 token 去换 session（必然 401）。
+      if (_ownTokenId != null && d.id == _ownTokenId) {
+        await SessionStore().clearAppToken();
+      }
       if (!mounted) return;
       setState(() {
         _devices = _devices?.where((e) => e.id != d.id).toList();
@@ -210,7 +223,7 @@ class _DevicesPageState extends State<DevicesPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (d.current)
+                if (_isOwnDevice(d))
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 2),
@@ -279,6 +292,12 @@ class _DevicesPageState extends State<DevicesPage> {
         ],
       ),
     );
+  }
+
+  /// 是否本机。优先用本地 token id 比对；旧版本没存 id 时退回服务端 current 字段。
+  bool _isOwnDevice(AppDevice d) {
+    if (_ownTokenId != null && _ownTokenId! > 0) return d.id == _ownTokenId;
+    return d.current;
   }
 
   IconData _platformIcon(String platform) {

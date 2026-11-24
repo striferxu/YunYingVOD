@@ -63,6 +63,22 @@ def issue(user_id, device_name, platform, ip, ua):
         expires_at = now + _ttl_seconds()
         device_name = _clean_name(device_name, "未命名设备")
         platform = _clean_name(platform, "unknown")
+
+        # 同设备去重：同一用户 + 同一设备名 + 同一平台只保留最新一条。
+        #
+        # 为什么需要这一步（P3 真机验收暴露）：早期客户端登出时靠 /api/app/tokens
+        # 返回的 current 字段找本机 token，但 list_tokens 没传 current_token_id，
+        # 该字段恒为 false → 本机 token 从未被删除 → 每登录一次多一条，
+        # 设备管理页出现多条同名设备。
+        # 客户端已修（按 id 精确删），这里做服务端兜底：即使客户端杀进程、
+        # 网络失败、旧版本 App，也不会无限堆积。
+        dup = conn.execute(
+            "SELECT id FROM app_tokens WHERE user_id=? AND device_name=? AND platform=?",
+            (user_id, device_name, platform)).fetchall()
+        if dup:
+            conn.executemany("DELETE FROM app_tokens WHERE id=?",
+                             [(r["id"],) for r in dup])
+
         cur = conn.execute(
             "INSERT INTO app_tokens(token_hash,user_id,device_name,platform,created_at,"
             "last_used_at,expires_at,ip,ua) VALUES(?,?,?,?,?,?,?,?,?)",

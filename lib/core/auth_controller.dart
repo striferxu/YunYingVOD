@@ -195,6 +195,10 @@ class AuthController extends ChangeNotifier {
     await _store.writeCookies(_api.exportCookies());
     await _store.saveLastUsername(u);
 
+    // 签发前先清掉本地残留的旧 token，避免"杀进程不点登出"导致
+    // 服务端同设备堆积多条记录。这里只是尽力而为，失败不影响登录。
+    await _purgeStaleLocalToken();
+
     // 签发长效 token。失败不阻塞登录（用户这次仍能用），只是下次要重输。
     await _issueAppTokenQuietly();
 
@@ -234,6 +238,23 @@ class AuthController extends ChangeNotifier {
     return AuthError(e.message, statusCode: e.statusCode);
   }
 
+  /// 登录前清理本地残留的旧 token（服务端一并删掉）。
+  ///
+  /// 场景：用户上次直接杀进程、没走登出流程 → 本地还有旧 token、服务端也有记录。
+  /// 不清理的话每登录一次就多一条，设备管理页会看到一堆同名设备。
+  Future<void> _purgeStaleLocalToken() async {
+    final stale = await _store.readAppToken();
+    if (stale == null) return;
+    if (stale.id != null && stale.id! > 0) {
+      try {
+        await _api.delete('/api/app/tokens/${stale.id}');
+      } catch (_) {
+        // 404 或网络错误都无所谓，继续签发新 token
+      }
+    }
+    await _store.clearAppToken();
+  }
+
   /// 签发 app token 并持久化。失败静默（不影响本次登录）。
   Future<void> _issueAppTokenQuietly() async {
     try {
@@ -243,7 +264,8 @@ class AuthController extends ChangeNotifier {
       });
       final issued = IssuedToken.fromJson(resp.data);
       if (issued.token.isNotEmpty) {
-        await _store.writeAppToken(issued.token, issued.expiresAt);
+        await _store.writeAppToken(issued.token, issued.expiresAt,
+            id: issued.id);
       }
     } catch (_) {
       // 忽略：本次会话仍可用，只是下次启动要重新登录
@@ -259,7 +281,8 @@ class AuthController extends ChangeNotifier {
       });
       final issued = IssuedToken.fromJson(resp.data);
       if (issued.token.isNotEmpty) {
-        await _store.writeAppToken(issued.token, issued.expiresAt);
+        await _store.writeAppToken(issued.token, issued.expiresAt,
+            id: issued.id);
       }
       return issued;
     } on ApiException {
@@ -297,22 +320,7 @@ class AuthController extends ChangeNotifier {
     _stopKeepAlive();
 
     // 1. 先作废本机 app token（需 session 还在，所以放在 logout 之前）
-    final token = await _store.readAppToken();
-    if (token != null) {
-      try {
-        // 找到当前设备的 token id 再删。失败无所谓，改密码也会清掉。
-        final listResp = await _api.get('/api/app/tokens');
-        final items = (listResp.data['items'] as List?) ?? const [];
-        for (final raw in items) {
-          if (raw is Map && raw['current'] == true) {
-            await _api.delete('/api/app/tokens/${raw['id']}');
-            break;
-          }
-        }
-      } catch (_) {
-        // 忽略
-      }
-    }
+    await _revokeOwnToken();
 
     // 2. 销毁服务端 session
     try {
@@ -327,6 +335,51 @@ class AuthController extends ChangeNotifier {
     _user = null;
     _lastRestorePath = 'logout';
     _setStatus(AuthStatus.unauthenticated);
+  }
+
+  /// 作废本机 app token。
+  ///
+  /// 历史教训（P3 真机验收暴露的 bug）：早期实现靠 `/api/app/tokens` 返回的
+  /// `current` 字段判断哪条是本机，但服务端 `list_tokens` 根本没传
+  /// `current_token_id`，该字段恒为 false → 本机 token 从未被删除 →
+  /// 每次登录多一条，设备管理页堆积重复记录。
+  ///
+  /// 现在改为**签发时就把 id 存进 secure storage**，登出按 id 精确 DELETE，
+  /// 不依赖任何服务端字段。
+  Future<void> _revokeOwnToken() async {
+    final saved = await _store.readAppToken();
+    if (saved == null) return;
+
+    // 主路径：本地有 id，直接删
+    if (saved.id != null && saved.id! > 0) {
+      try {
+        await _api.delete('/api/app/tokens/${saved.id}');
+        return;
+      } on ApiException catch (e) {
+        // 404 = 服务端已经没有了（可能被别处删掉），也算成功
+        if (e.statusCode == 404) return;
+        // 其余错误继续走兜底
+      } catch (_) {
+        // 网络错误，继续走兜底
+      }
+    }
+
+    // 兜底路径：旧版本存下的 token 没有 id，按设备名匹配删除。
+    // 只删**与本机 device_name 完全一致**的条目，避免误删用户其他设备。
+    try {
+      final label = await deviceLabel();
+      final listResp = await _api.get('/api/app/tokens');
+      final items = (listResp.data['items'] as List?) ?? const [];
+      for (final raw in items) {
+        if (raw is! Map) continue;
+        if (raw['device_name'] == label) {
+          await _api.delete('/api/app/tokens/${raw['id']}');
+          break;
+        }
+      }
+    } catch (_) {
+      // 彻底失败也不阻塞登出：session 已销毁，token 会自然过期
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ class SessionStore {
   static const _kCookies = 'vod_cookies_v1';
   static const _kAppToken = 'vod_app_token_v1';
   static const _kAppTokenExpiry = 'vod_app_token_expiry_v1';
+  static const _kAppTokenId = 'vod_app_token_id_v1';
   static const _kDeviceId = 'vod_device_id_v1';
   static const _kLastUser = 'vod_last_username_v1';
 
@@ -53,13 +54,25 @@ class SessionStore {
 
   // ---- app token ----
 
-  Future<void> writeAppToken(String token, int expiresAt) async {
+  /// 保存 token。
+  ///
+  /// [id] 是服务端 app_tokens 表的主键，**登出时必须靠它精确删除**。
+  /// 不能用 `/api/app/tokens` 返回的 `current` 字段判断——服务端 P1 实现里
+  /// `list_tokens` 没传 current_token_id，该字段恒为 false（P3 真机验收暴露）。
+  Future<void> writeAppToken(String token, int expiresAt, {int? id}) async {
     await _storage.write(key: _kAppToken, value: token);
     await _storage.write(key: _kAppTokenExpiry, value: expiresAt.toString());
+    if (id != null && id > 0) {
+      await _storage.write(key: _kAppTokenId, value: id.toString());
+    } else {
+      await _storage.delete(key: _kAppTokenId);
+    }
   }
 
-  /// 返回 (token, expiresAt)；任一缺失或已过期返回 null。
-  Future<({String token, int expiresAt})?> readAppToken() async {
+  /// 返回 (token, expiresAt, id)；token 缺失或已过期返回 null。
+  ///
+  /// `id` 可能为 null（旧版本存下的 token 没有记录 id）。
+  Future<({String token, int expiresAt, int? id})?> readAppToken() async {
     final token = await _storage.read(key: _kAppToken);
     final expRaw = await _storage.read(key: _kAppTokenExpiry);
     if (token == null || token.isEmpty || expRaw == null) return null;
@@ -67,12 +80,14 @@ class SessionStore {
     if (exp == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (exp <= now) return null;
-    return (token: token, expiresAt: exp);
+    final idRaw = await _storage.read(key: _kAppTokenId);
+    return (token: token, expiresAt: exp, id: int.tryParse(idRaw ?? ''));
   }
 
   Future<void> clearAppToken() async {
     await _storage.delete(key: _kAppToken);
     await _storage.delete(key: _kAppTokenExpiry);
+    await _storage.delete(key: _kAppTokenId);
   }
 
   // ---- 杂项 ----
