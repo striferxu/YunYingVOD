@@ -177,6 +177,7 @@ docs/                      契约、验收记录、探针脚本
 | `docs/P3_ACCEPTANCE.md` | P3 验收记录（会话状态机、探针实测、Kotlin 构建踩坑） |
 | `docs/OPEN_QUESTIONS.md` | P0 决策记录 |
 | `docs/probe_p0*.py` / `probe_p1.py` / `probe_p3.py` | 可复跑的接口探针 |
+| `docs/probe_dedup.py` / `probe_revoke.py` | 设备管理回归探针（去重 / 踢设备生效） |
 | `docs/server_snapshot/` | 线上服务端代码快照 |
 | `docs/verify/` | 验收证据（analyze/test 输出、依赖树、APK 元信息） |
 

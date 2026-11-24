@@ -16,8 +16,24 @@ def connect():
     return conn
 
 
+def _columns(conn, table):
+    return {r["name"] for r in conn.execute("PRAGMA table_info(%s)" % table).fetchall()}
+
+
+def _migrate(conn):
+    """幂等的列级迁移。CREATE TABLE IF NOT EXISTS 不会给已有表加列，
+    所以新增列必须在这里显式 ALTER。"""
+    # P3.2：sessions.app_token_id —— 记录 session 由哪个 app_token 换来，
+    # 使"踢设备"能连带销毁对应 session（否则 session 滑动续期，踢了也没用）。
+    if "app_token_id" not in _columns(conn, "sessions"):
+        conn.execute("ALTER TABLE sessions ADD COLUMN app_token_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_app_token "
+                     "ON sessions(app_token_id)")
+        print("[db] migrated: sessions.app_token_id", flush=True)
+
+
 def init_db():
-    """建目录、设 WAL、执行建表 DDL。幂等。"""
+    """建目录、设 WAL、执行建表 DDL、跑列级迁移。幂等。"""
     d = os.path.dirname(DB_PATH)
     if d and not os.path.isdir(d):
         os.makedirs(d, exist_ok=True)
@@ -26,6 +42,8 @@ def init_db():
         conn.execute("PRAGMA journal_mode=WAL")
         with open(_SCHEMA, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
+        conn.commit()
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()

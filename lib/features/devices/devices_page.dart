@@ -11,10 +11,12 @@
 ///   * 踢别人的设备返回 403，不存在的 id 返回 404
 library;
 
-import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/auth_controller.dart';
 import '../../core/models/user.dart';
 import '../../core/session_store.dart';
 import '../../core/theme.dart';
@@ -87,8 +89,9 @@ class _DevicesPageState extends State<DevicesPage> {
         backgroundColor: AppTheme.surface,
         title: const Text('移除此设备？'),
         content: Text(
-          '「${d.deviceName}」将立即失效，需要重新输入密码登录。\n'
-          '当前正在使用该设备的会话不受影响，但下次静默续期会失败。',
+          _isOwnDevice(d)
+              ? '「${d.deviceName}」是本机，移除后将立即退出登录，需要重新输入密码。'
+              : '「${d.deviceName}」将立即失效，该设备上的 App 会被强制退出登录。',
           style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
         ),
         actions: [
@@ -106,14 +109,23 @@ class _DevicesPageState extends State<DevicesPage> {
     );
     if (ok != true) return;
 
+    final isOwn = _isOwnDevice(d);
     setState(() => _revoking = d.id);
     try {
-      await _api.delete('/api/app/tokens/${d.id}');
-      // 如果移除的是本机设备，本地存的 token 也要一并清掉，
-      // 否则下次启动会拿一个已作废的 token 去换 session（必然 401）。
-      if (_ownTokenId != null && d.id == _ownTokenId) {
-        await SessionStore().clearAppToken();
+      final resp = await _api.delete('/api/app/tokens/${d.id}');
+      // 服务端 revoke 会连带销毁该 token 换来的 session，并在响应里回
+      // self_revoked 表示"你把自己踢了"。以服务端判定为准，
+      // 本地 id 比对只作兜底（旧版没存 id 时）。
+      final selfRevoked = resp.data['self_revoked'] == true || isOwn;
+
+      if (selfRevoked) {
+        // 立即切未登录态：清 Cookie + token，路由守卫自动跳登录页。
+        // 不做这一步的话本地 Cookie 仍有效，杀进程重开还会自动登录。
+        if (!mounted) return;
+        await context.read<AuthController>().onSelfRevoked();
+        return;
       }
+
       if (!mounted) return;
       setState(() {
         _devices = _devices?.where((e) => e.id != d.id).toList();

@@ -459,6 +459,24 @@ class AuthController extends ChangeNotifier {
     await refreshSession(silent: true);
   }
 
+  /// 本机设备被踢下线时调用（设备管理页移除当前设备后）。
+  ///
+  /// 与 [logout] 的区别：这里服务端 session 已被 revoke 连带销毁，
+  /// 不需要再调 /api/logout，只需清本地并切状态。
+  ///
+  /// 为什么必须显式调用：服务端 revoke 会删掉 token 和对应 session，
+  /// 但客户端内存里的 Cookie 还在。若不立刻切状态，用户会停留在已登录界面；
+  /// 更糟的是 bootstrap 会先试 Cookie → 服务端已删 → 401 → 再试 token → 也没了
+  /// → 才降级到登录页，中间多绕两圈还可能撞上网络错误而"看起来仍登录"。
+  Future<void> onSelfRevoked() async {
+    _stopKeepAlive();
+    _api.clearCookies();
+    await _store.clearSession();
+    _user = null;
+    _lastRestorePath = 'self_revoked';
+    _setStatus(AuthStatus.unauthenticated);
+  }
+
   /// 全局 401 回调（由 main.dart 订阅 ApiClient.onUnauthorized 触发）。
   ///
   /// 注意：`refreshSession` 内部也会遇到 401，那时会先尝试 token 换新；

@@ -21,9 +21,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_active INTEGER NOT NULL,
   expires_at  INTEGER NOT NULL,
   ip          TEXT,
-  ua          TEXT
+  ua          TEXT,
+  -- 该 session 由哪个 app_token 换来（NULL = 网页端密码登录）。
+  -- 踢设备时按此列连带销毁对应 session，否则 session 会滑动续期，
+  -- 被踢的设备只要 App 开着就能无限续命（P3.2 修复）。
+  app_token_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+-- 注意：idx_sessions_app_token 不在这里建。
+-- 旧库的 sessions 表还没有 app_token_id 列，此处建索引会报
+-- "no such column: app_token_id"，导致服务启动失败（P3.2 踩过）。
+-- 该索引统一由 db._migrate() 在 ALTER TABLE 之后创建。
 
 CREATE TABLE IF NOT EXISTS videos (
   id          TEXT    PRIMARY KEY,                      -- 沿用现有 id（8位hex 或 tw_<id>），不要重新生成

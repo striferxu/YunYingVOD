@@ -78,13 +78,20 @@ def _parse_content_type(ct):
 # 会话（落库）
 # ---------------------------------------------------------------------------
 
-def create_session(conn, user_id, ip, ua):
+def create_session(conn, user_id, ip, ua, app_token_id=None):
+    """创建 session。
+
+    [app_token_id] 非空表示该 session 由某个 app token 换来。
+    踢设备时按此列连带销毁 session —— 否则 session 会滑动续期，
+    被踢的设备只要 App 还开着就能无限续命（P3.2 修复）。
+    """
     token = secrets.token_urlsafe(32)
     now = _now()
     conn.execute(
-        "INSERT INTO sessions(token_hash,user_id,created_at,last_active,expires_at,ip,ua) "
-        "VALUES(?,?,?,?,?,?,?)",
-        (auth.token_hash(token), user_id, now, now, now + SESSION_MAX_AGE, ip, ua[:200]))
+        "INSERT INTO sessions(token_hash,user_id,created_at,last_active,expires_at,ip,ua,"
+        "app_token_id) VALUES(?,?,?,?,?,?,?,?)",
+        (auth.token_hash(token), user_id, now, now, now + SESSION_MAX_AGE, ip, ua[:200],
+         app_token_id))
     return token
 
 
@@ -361,7 +368,11 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
                 return
             m_tok = re.fullmatch(r"/api/app/tokens/(\d+)", path)
             if self.command == "DELETE" and m_tok:
-                status, body = app_tokens.revoke(user["user_id"], int(m_tok.group(1)))
+                # 传入当前 session token：revoke 用它判断"是不是把自己踢了"，
+                # 并在响应里回 self_revoked，客户端据此立刻切登录页。
+                status, body = app_tokens.revoke(
+                    user["user_id"], int(m_tok.group(1)),
+                    current_session_token=token)
                 self._send(status, body)
                 return
 
@@ -562,7 +573,8 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
         try:
             ip = self._client_ip()
             ua = self.headers.get("User-Agent", "")
-            session_token = create_session(conn, user["user_id"], ip, ua)
+            session_token = create_session(conn, user["user_id"], ip, ua,
+                                           app_token_id=tok_id)
             conn.execute("UPDATE users SET last_login_at=?, last_login_ip=? WHERE id=?",
                          (_now(), ip, user["user_id"]))
             conn.commit()

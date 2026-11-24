@@ -247,3 +247,70 @@ org.gradle.vfs.watch=false
 - `docs/probe_p3.py` — 服务端探针
 - `docs/verify/p3_apk_badging.txt` — APK 元信息
 - `docs/P1_APP_TOKEN_SPEC.md` — 后端接口契约（P3 客户端对接依据）
+
+---
+
+## 8. 真机验收第二轮：移除设备后不退出登录（P3.2）
+
+### 8.1 现象
+
+在设备管理页移除**当前设备**后，App 不退出登录；从后台杀掉重开，**仍是已登录状态**。
+
+### 8.2 根因（三层，比第一轮更严重）
+
+1. **`sessions` 与 `app_tokens` 两表无关联**：`revoke()` 只删 token，session 一动不动。
+2. **session 滑动续期**：`get_session_user()` 每次请求都执行
+   `expires_at = now + 1800`。所以被踢的设备只要 App 还开着、每 10 分钟保活一次，
+   session 就能无限续命 —— **"踢设备"功能此前完全无效**，不只是移除自己这一种情况。
+3. **客户端移除后不切状态**：只清了本地 token，内存和磁盘里的 Cookie 还在。
+   `bootstrap()` 走 Cookie 路径 → `/api/me` 返回 200 → 直接免登录进首页。
+
+第 2 点是设计缺陷，第 1 点让它无法修复，第 3 点是直接诱因。
+
+### 8.3 修复
+
+| 层 | 改动 |
+|----|------|
+| 数据库 | `sessions` 新增 `app_token_id` 列，记录该 session 由哪个 token 换来（NULL = 网页密码登录） |
+| 迁移 | `db._migrate()` 幂等 `ALTER TABLE`，旧库自动补列 + 建索引 |
+| 服务端 | `create_session(..., app_token_id=tok_id)` 在 `/api/app/session` 里记录来源 |
+| 服务端 | `revoke()` 连带 `DELETE FROM sessions WHERE app_token_id=?`，并返回 `sessions_killed` 与 `self_revoked` |
+| 客户端 | 新增 `AuthController.onSelfRevoked()`：清 Cookie + token 并切未登录，路由守卫自动跳登录页 |
+| 客户端 | 设备页读取响应 `self_revoked`，本机被移除时立即调 `onSelfRevoked()`；对话框文案区分"本机"与"其他设备" |
+
+### 8.4 回归测试
+
+新增 `docs/probe_revoke.py`，服务器实测 **11/11 通过**：
+
+```
+[PASS] A. token 换 session -> 200
+[PASS] A2. 新 session 可访问 /api/me
+[PASS] B. 踢设备 -> 200
+[PASS] B2. 连带销毁了 session（sessions_killed>=1）  -> sessions_killed=1
+[PASS] B3. 不是自己踢自己（self_revoked=false）
+[PASS] C. 被踢设备的 session 立刻失效 -> 401          ★ 核心
+[PASS] D. 旧 token 换 session -> 401
+[PASS] E. 反复保活 3 次仍是 401（session 未被续期复活） ★ 核心
+[PASS] F. 踢自己 -> self_revoked=true
+[PASS] F2. 自踢后自己的 session 也失效 -> 401
+[PASS] G. 踢不存在的设备 -> 404
+```
+
+原 P3 探针 16/16、去重探针 5/5 复跑均通过，无回归。
+
+### 8.5 部署事故记录（重要教训）
+
+首次部署时把 `CREATE INDEX ... ON sessions(app_token_id)` 写进了 `schema.sql`，
+而旧库 `sessions` 表还没有该列 → `init_db()` 报 `no such column: app_token_id`
+→ **服务启动失败，systemd 反复重启**（约 1 分钟不可用）。
+
+**教训**：给已有表新增列时，索引**不能**放在 `executescript(schema)` 里，
+必须放到 `ALTER TABLE` 之后的迁移代码中。已在 `schema.sql` 原位加注释说明。
+
+后端备份：`/root/site-backups/revoke_20261125_021021/`（含回滚所需的 5 个文件）。
+
+### 8.6 修复后的行为
+
+- 移除**本机** → 立即退出登录，跳到登录页；杀进程重开仍在登录页
+- 移除**其他设备** → 该设备下次请求（≤10 分钟）收到 401 → 自动跳登录页
+- 网页端会话不受影响（`app_token_id` 为 NULL，不会被任何 revoke 波及）

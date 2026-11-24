@@ -159,8 +159,18 @@ def list_tokens(user_id, current_token_id=None):
         conn.close()
 
 
-def revoke(user_id, token_id):
-    """踢掉指定设备。只能删自己的。返回 (status, body)。"""
+def revoke(user_id, token_id, current_session_token=None):
+    """踢掉指定设备。只能删自己的。返回 (status, body)。
+
+    除删除 token 外，**连带销毁该 token 换来的所有 session**。
+    不这么做的话：session 会滑动续期（get_session_user 每次访问都
+    expires_at = now + 1800），被踢的设备只要 App 还开着、每 10 分钟
+    保活一次，就能无限续命 —— 移除按钮形同虚设（P3.2 修复）。
+
+    [current_session_token] 是发起本次请求的 session 明文 token。
+    如果被踢的正是自己当前会话，响应里会带 `self_revoked: true`，
+    客户端据此立刻切到登录页。
+    """
     conn = db.connect()
     try:
         row = conn.execute("SELECT id,user_id,device_name FROM app_tokens WHERE id=?",
@@ -169,14 +179,31 @@ def revoke(user_id, token_id):
             return 404, {"error": "token not found"}
         if row["user_id"] != user_id:
             return 403, {"error": "forbidden"}
+
+        # 1. 销毁该 token 换来的全部 session
+        killed = conn.execute(
+            "DELETE FROM sessions WHERE app_token_id=?", (token_id,)).rowcount
+
+        # 2. 判断被踢的是不是自己当前这台设备
+        self_revoked = False
+        if current_session_token:
+            th = auth.token_hash(current_session_token)
+            gone = conn.execute(
+                "SELECT 1 FROM sessions WHERE token_hash=?", (th,)).fetchone()
+            if not gone:
+                self_revoked = True
+
+        # 3. 删除 token
         conn.execute("DELETE FROM app_tokens WHERE id=?", (token_id,))
+
         now = int(time.time())
         conn.execute(
             "INSERT INTO audit_log(ts,user_id,action,target,detail,ip) VALUES(?,?,?,?,?,?)",
             (now, user_id, "app.token.revoke", str(token_id),
-             "device=%s" % row["device_name"], None))
+             "device=%s sessions_killed=%d" % (row["device_name"], killed), None))
         conn.commit()
-        return 200, {"ok": True}
+        return 200, {"ok": True, "sessions_killed": killed,
+                     "self_revoked": self_revoked}
     finally:
         conn.close()
 
