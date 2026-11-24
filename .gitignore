@@ -9,18 +9,35 @@ build/
 *.iml
 .idea/
 .vscode/
+analysis_options.yaml.bak
 
 # Android 签名与密钥（绝不入库）
 *.jks
 *.keystore
 key.properties
 local.properties
+android/local.properties
+
+# 构建产物
+*.apk
+*.aab
+*.so
+*.dill
 
 # 环境与凭据
 .env
 *.env
 !env.conf.example
+*.token
+*.pat
+
+# 临时日志
+build_apk*.log
+build_apk*.err.log
+nohup.out
+*.tmp
 
 # 系统
 .DS_Store
 Thumbs.db
+desktop.ini

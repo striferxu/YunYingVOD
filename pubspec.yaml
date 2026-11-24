@@ -1,0 +1,34 @@
+name: vod_app
+description: "YunYing VOD 安卓客户端"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  material_ui: ^1.11.1
+
+  # 网络：不引入 dio，保持轻量；Cookie 由 ApiClient 手工管理
+  http: ^1.2.2
+  # Cookie 持久化（会话 Cookie 需要跨进程存活）
+  flutter_secure_storage: ^9.2.2
+  # 路由：Navigator 2 声明式，P3 之后所有页面走 go_router
+  go_router: ^14.6.2
+  # 轻量状态管理
+  provider: ^6.1.2
+  # 时间格式化（视频列表显示上传时间）
+  intl: ^0.20.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,9 @@
+﻿flutter.bat : Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+At line:13 char:1
++ & "D:\dev\tools\flutter\bin\flutter.bat" analyze 2>&1 | Out-File -Fil ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Flutter assets ...st this source!:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Analyzing vod_app...                                            
+No issues found! (ran in 22.2s)
