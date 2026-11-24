@@ -1,0 +1,21 @@
+目标: http://127.0.0.1:8000  账号: user
+------------------------------------------------------------
+[PASS] 0. 无 Cookie 调 /api/me -> 401  -> status=401
+[PASS] 1. 正确密码登录 -> 200  -> status=200 body={"ok": true, "username": "user", "role": "user"}
+[PASS] 1b. 下发 site_session Cookie  -> 有 Cookie
+[PASS] 2. Cookie 调 /api/me -> 200  -> status=200 username=user
+[PASS] 4. 签发 app token -> 200  -> status=200 ttl_days=30
+[PASS] 4b. token 有效期 30 天  -> ttl_days=30
+[PASS] 5. 仅用 token 换 session -> 200  -> status=200 body={"ok": true, "username": "user", "role": "user", "expires_at": 1795542986, "toke
+[PASS] 5b. 换到新 Cookie 且与旧的不同  -> 新 Cookie
+[PASS] 6. 新 Cookie 调 /api/me -> 200  -> status=200
+[PASS] 7. 伪造 token 换 session -> 401  -> status=401
+[PASS] 8. 列出设备含刚签发项  -> status=200 total=1 命中=1
+[PASS] 9. 踢掉该设备 -> 200  -> status=200 {"ok": true}
+[PASS] 10. 已踢 token 换 session -> 401  -> status=401
+[PASS] 11. 登出（带 {}）-> 200  -> status=200
+[PASS] 11b. 登出后 /api/me -> 401  -> status=401
+[PASS] 3. 错误密码 -> 401 Invalid credentials  -> status=401 error=Invalid credentials
+------------------------------------------------------------
+合计 16/16 通过
+全部通过 ✓

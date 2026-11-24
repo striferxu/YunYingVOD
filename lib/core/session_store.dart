@@ -21,9 +21,9 @@ class SessionStore {
 
   SessionStore({FlutterSecureStorage? storage})
       : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+            // flutter_secure_storage 11.x 默认使用 EncryptedSharedPreferences，
+            // 不再需要（也不再支持）显式传 encryptedSharedPreferences: true
+            const FlutterSecureStorage();
 
   // ---- Cookie ----
 

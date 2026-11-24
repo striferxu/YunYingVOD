@@ -14,7 +14,7 @@
 | P0 | API 契约冻结（全部实测） | ✅ |
 | P1 | 后端 app_tokens 四接口 | ✅ 已上线，25/25 实测通过 |
 | **P2** | **Flutter 项目骨架** | **✅ analyze 零问题 / 19 测试全绿 / APK 构建成功** |
-| P3 | 登录与会话 | 待开始 |
+| **P3** | **登录与会话** | **✅ analyze 零问题 / 34 测试全绿 / 服务端 16/16 实测通过 / APK 构建成功** |
 | P4 | 视频广场 + 我的 | — |
 | P5 | 播放器（HLS AES-128） | — |
 | P6 | 上传与转码进度 | — |
@@ -174,8 +174,9 @@ docs/                      契约、验收记录、探针脚本
 | `docs/CLIENT_API_SPEC.md` | **客户端唯一接口契约**（全部实测） |
 | `docs/P1_APP_TOKEN_SPEC.md` | app token 设计与接口 |
 | `docs/P2_ACCEPTANCE.md` | P2 验收记录与环境踩坑 |
+| `docs/P3_ACCEPTANCE.md` | P3 验收记录（会话状态机、探针实测、Kotlin 构建踩坑） |
 | `docs/OPEN_QUESTIONS.md` | P0 决策记录 |
-| `docs/probe_p0*.py` / `probe_p1.py` | 可复跑的接口探针 |
+| `docs/probe_p0*.py` / `probe_p1.py` / `probe_p3.py` | 可复跑的接口探针 |
 | `docs/server_snapshot/` | 线上服务端代码快照 |
 | `docs/verify/` | 验收证据（analyze/test 输出、依赖树、APK 元信息） |
 

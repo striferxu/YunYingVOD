@@ -17,13 +17,18 @@ dependencies:
   # 网络：不引入 dio，保持轻量；Cookie 由 ApiClient 手工管理
   http: ^1.2.2
   # Cookie 持久化（会话 Cookie 需要跨进程存活）
-  flutter_secure_storage: ^9.2.2
+  # 11.x 起才能与 device_info_plus 13.x 共存（win32 版本约束冲突）
+  flutter_secure_storage: ^11.2.0
   # 路由：Navigator 2 声明式，P3 之后所有页面走 go_router
   go_router: ^14.6.2
   # 轻量状态管理
   provider: ^6.1.2
   # 时间格式化（视频列表显示上传时间）
   intl: ^0.20.1
+  # 机型名（app token 的 device_name 用真实机型，便于设备管理页辨认）
+  device_info_plus: ^13.3.0
+  # 网络状态（弱网/断网提示）
+  connectivity_plus: ^7.3.2
 
 dev_dependencies:
   flutter_test:
