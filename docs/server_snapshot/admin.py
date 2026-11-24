@@ -81,13 +81,15 @@ def user_password(vid, body, actor_id, ip):
             return 404, {"error": "user not found"}
         now = int(time.time())
         conn.execute("UPDATE users SET password_hash=? WHERE id=?", (auth.hash_password(password), vid))
-        # 改密后踢掉该用户全部会话
+        # 改密后踢掉该用户全部会话 + 全部 app token（P1）
         conn.execute("DELETE FROM sessions WHERE user_id=?", (vid,))
+        revoked = conn.execute("DELETE FROM app_tokens WHERE user_id=?", (vid,)).rowcount
         conn.execute(
             "INSERT INTO audit_log(ts,user_id,action,target,detail,ip) VALUES(?,?,?,?,?,?)",
-            (now, actor_id, "user.password", str(vid), "username=%s" % row["username"], ip))
+            (now, actor_id, "user.password", str(vid),
+             "username=%s tokens_revoked=%d" % (row["username"], revoked), ip))
         conn.commit()
-        return 200, {"ok": True}
+        return 200, {"ok": True, "tokens_revoked": revoked}
     finally:
         conn.close()
 
@@ -110,6 +112,7 @@ def user_status(vid, body, actor_id, ip):
         conn.execute("UPDATE users SET status=? WHERE id=?", (status, vid))
         if status == "disabled":
             conn.execute("DELETE FROM sessions WHERE user_id=?", (vid,))
+            conn.execute("DELETE FROM app_tokens WHERE user_id=?", (vid,))
         conn.execute(
             "INSERT INTO audit_log(ts,user_id,action,target,detail,ip) VALUES(?,?,?,?,?,?)",
             (now, actor_id, "user.status", str(vid),

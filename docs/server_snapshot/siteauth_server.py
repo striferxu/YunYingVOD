@@ -40,6 +40,7 @@ import auth
 import videos as videos_mod
 import admin as admin_mod
 import multiuser  # 多用户扩展（注册审核/上传转码），独立模块不影响旧功能
+import app_tokens  # P1：移动端长效令牌
 
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = int(os.environ.get("SERVER_PORT", "8000"))
@@ -229,6 +230,12 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
             if origin and origin not in ALLOWED_ORIGINS:
                 return False
             return True
+        # 设备管理：DELETE /api/app/tokens/<id> 允许无请求体（仍校验 Origin）
+        if self.command == "DELETE" and re.fullmatch(r"/api/app/tokens/\d+", path):
+            origin = self.headers.get("Origin")
+            if origin and origin not in ALLOWED_ORIGINS:
+                return False
+            return True
         if "application/json" not in ct.lower():
             return False
         origin = self.headers.get("Origin")
@@ -301,6 +308,12 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
                 self._send(status, body)
             return
 
+        # ---- P1：移动端长效令牌 ----
+        # 用 app token 换 session。此接口不需要 Cookie，必须在会话校验之前。
+        if self.command == "POST" and path == "/api/app/session":
+            self._handle_app_session()
+            return
+
         # 会话校验（除 login 外全部要求会话）
         conn = db.connect()
         try:
@@ -325,6 +338,30 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.command == "GET" and path == "/api/me_full":
                 status, body = multiuser.me_full(user["user_id"])
+                self._send(status, body)
+                return
+
+            # ---- P1：app token 签发与设备管理（需已有会话） ----
+            if self.command == "POST" and path == "/api/app/token":
+                data, err = self._read_json_body()
+                if err:
+                    self._send(err[0], err[1])
+                else:
+                    status, body = app_tokens.issue(
+                        user["user_id"],
+                        data.get("device_name"),
+                        data.get("platform"),
+                        self._client_ip(),
+                        self.headers.get("User-Agent", ""))
+                    self._send(status, body)
+                return
+            if self.command == "GET" and path == "/api/app/tokens":
+                status, body = app_tokens.list_tokens(user["user_id"])
+                self._send(status, body)
+                return
+            m_tok = re.fullmatch(r"/api/app/tokens/(\d+)", path)
+            if self.command == "DELETE" and m_tok:
+                status, body = app_tokens.revoke(user["user_id"], int(m_tok.group(1)))
                 self._send(status, body)
                 return
 
@@ -497,6 +534,46 @@ class SiteAuthHandler(http.server.BaseHTTPRequestHandler):
     def _handle_logout(self, conn, token):
         destroy_session(conn, token)
         self._send(200, {"ok": True}, extra_headers={self._clear_session_cookie()[0]: self._clear_session_cookie()[1]})
+
+    def _handle_app_session(self):
+        """POST /api/app/session — 用 app token 换一个普通 session Cookie。
+
+        请求：{"token": "vap_xxx"}（也可放在 Authorization: Bearer 里）
+        成功：200 + Set-Cookie: site_session=...，body 附 expires_at
+        失败：401（无效/过期/账号被停用）
+        """
+        data, err = self._read_json_body()
+        if err:
+            self._send(err[0], err[1])
+            return
+        tok = (data.get("token") or "").strip()
+        if not tok:
+            authz = self.headers.get("Authorization", "")
+            if authz.lower().startswith("bearer "):
+                tok = authz[7:].strip()
+        if not tok:
+            self._send_err(400, "token required")
+            return
+        user, tok_id = app_tokens.resolve(tok)
+        if not user:
+            self._send_err(401, "invalid or expired token")
+            return
+        conn = db.connect()
+        try:
+            ip = self._client_ip()
+            ua = self.headers.get("User-Agent", "")
+            session_token = create_session(conn, user["user_id"], ip, ua)
+            conn.execute("UPDATE users SET last_login_at=?, last_login_ip=? WHERE id=?",
+                         (_now(), ip, user["user_id"]))
+            conn.commit()
+            ck = self._set_session_cookie(session_token)
+            self._send(200, {"ok": True, "username": user["username"],
+                             "role": user["role"],
+                             "expires_at": _now() + SESSION_MAX_AGE,
+                             "token_id": tok_id},
+                       extra_headers={ck[0]: ck[1]})
+        finally:
+            conn.close()
 
     def _handle_videos(self, query):
         q = (query.get("q") or [None])[0]

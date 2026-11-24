@@ -53,3 +53,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+
+-- 移动端长效令牌（P1）。令牌明文只签发时返回一次，DB 只存 sha256。
+-- 与 sessions 分离：session 是 30 分钟滑动窗口，app_token 是 30 天固定有效期，
+-- 客户端拿 app_token 换 session，媒体链路鉴权一行不动。
+CREATE TABLE IF NOT EXISTS app_tokens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash  TEXT    NOT NULL UNIQUE,                  -- sha256(vap_xxx) 的 hex
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_name TEXT    NOT NULL DEFAULT '',              -- 用户可读的设备名，如 "Pixel 8"
+  platform    TEXT    NOT NULL DEFAULT 'unknown',       -- android / ios / unknown
+  created_at  INTEGER NOT NULL,
+  last_used_at INTEGER,                                 -- 最近一次换 session 的时间
+  expires_at  INTEGER NOT NULL,                         -- 固定到期，不滑动续期
+  ip          TEXT,
+  ua          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_app_tokens_user ON app_tokens(user_id, expires_at);
