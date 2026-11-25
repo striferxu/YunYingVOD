@@ -5,7 +5,7 @@
 >
 > - 仓库：`striferxu/YunYingVOD`（public）
 > - 服务端：`https://51play.ccwu.cc`（IP `64.90.31.17`，nginx 反代 → `siteauth` `127.0.0.1:8000`）
-> - 首个正式版本：`v0.1.0`（versionName `0.1.0`，versionCode 1）
+> - 首个正式版本：`v0.1.0`；当前版本：`v0.1.1`（versionName `0.1.1`）
 > - 汇总更新：2026-11-25
 
 ---
@@ -117,19 +117,39 @@
 - 重新构建 release（versionCode 2）并在 Fold4 上覆盖安装验证，页脚已显示 `v0.1.0`，
   登录态保留
 
+## 2.2 v0.1.1 发布（含 Web 端缺陷修复）
+
+**App 侧**：`v0.1.1` 由 CI 自动构建发布（run 45581895707 全绿），
+相对 `v0.1.0` 的唯一改动是页脚版本号修正（`kAppVersion` 常量 + 一致性测试）。
+Release 附件 `yunying-vod-v0.1.1.apk`（61,335,355 字节，sha256
+`538a146d7d1f9740d2f20b1d7229bca5330d460b2d9ec455cca9cd12d0ae973d`），
+下载后 sha256 与官方附件一致；证书仍为 `CN=YunYing VOD`。
+
+**Web 侧**（与 App 无关，但同批修复）：
+
+| # | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | 首页列表模式上传时间显示 `1970-01-22 02:44` | `fmtDateTime` 只认字符串，`created_at` 是 Unix **秒**整数，`new Date(1795490031)` 被当毫秒 | 数字/纯数字字符串按 `<1e11 视为秒` 处理，其余仍走原逻辑 |
+| 2 | 管理后台「上传者」全是「其他」 | `admin.videos_list()` 的 SELECT 漏了 `owner_id`，前端 `ownersMap[v.owner_id]` 恒 undefined | SELECT 补 `owner_id` |
+
+部署：`/var/www/html/app.js`、`/opt/siteauth/admin.py` 已更新并
+`systemctl restart siteauth`；备份在 `/root/site-backups/`（`app.js.bak_webtime_*`、
+`admin.py.bak_webowner_*`）。验证：`/api/admin/videos` 返回 `owner_id`，
+首页列表时间显示正确。
+
 ## 3. 当前线上/仓库状态
 
 | 项 | 值 |
 |---|---|
 | 仓库 | `striferxu/YunYingVOD`（public），main |
-| 最新 Release | `v0.1.0`（`yunying-vod-v0.1.0.apk` + `.sha256`） |
+| 最新 Release | `v0.1.1`（`yunying-vod-v0.1.1.apk` + `.sha256`） |
 | 包名 | `cc.ccwu.vod_app` |
 | 显示名 | 云影 VOD |
 | minSdk / targetSdk | 24 / 36 |
 | 签名证书 | `CN=YunYing VOD`，SHA-256 `c76f64ef…7898` |
 | 后端 | `siteauth`（systemd，`127.0.0.1:8000`），DB `/opt/siteauth/site.db` |
 | 测试账号 | `user` / `123456`（站长暂未改密码） |
-| 单元测试 | 105 条（`flutter test` 全绿） |
+| 单元测试 | 104 条（`flutter test` 全绿） |
 
 ---
 
