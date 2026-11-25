@@ -8,4 +8,4 @@
 /// 避免界面显示 1.0.0、实际安装 0.1.0 这种不一致（P8 首次发布时出现过）。
 library;
 
-const String kAppVersion = '0.1.0';
+const String kAppVersion = '0.1.1';
