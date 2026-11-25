@@ -287,6 +287,29 @@ class ApiClient {
     };
   }
 
+  /// 供媒体播放器用的 Cookie 头（P5）。
+  ///
+  /// ExoPlayer 拿到 `httpHeaders` 后会应用到该媒体源的**全部**请求：
+  /// `/videos/<id>/output.m3u8`、各 `.ts` 分段、以及 m3u8 里 `#EXT-X-KEY`
+  /// 指向的 `/key/<id>`。三者都过 nginx `auth_request`，不带 Cookie 一律 401。
+  ///
+  /// ⚠️ **不要加 Referer**：nginx 对 `/videos/`、`/key/` 配了
+  /// `valid_referers none server_names`，原生播放器默认不发 Referer 命中 `none`
+  /// 放行；手动加一个非本站 Referer 反而会被 403。
+  ///
+  /// 无 Cookie 时返回空 Map（调用方应视为鉴权失效，不要拿空头去播）。
+  Map<String, String> get mediaHeaders {
+    final sid = _cookies[sessionCookieName];
+    if (sid == null || sid.isEmpty) return const {};
+    return {'Cookie': '$sessionCookieName=$sid'};
+  }
+
+  /// 当前是否有可用于媒体的会话 Cookie。
+  bool get hasMediaCookie {
+    final sid = _cookies[sessionCookieName];
+    return sid != null && sid.isNotEmpty;
+  }
+
   void dispose() {
     _http.close();
     _unauthorized.close();

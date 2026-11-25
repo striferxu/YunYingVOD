@@ -41,3 +41,6 @@ nohup.out
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 构建产物（APK 体积大，不入库）
+dist/

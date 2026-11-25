@@ -31,6 +31,9 @@ dependencies:
   connectivity_plus: ^7.3.2
   # 布局偏好持久化（键名 home_layout，与 Web 端 localStorage 同名）
   shared_preferences: ^2.3.3
+  # HLS 播放（P5）。Android 底层是 ExoPlayer，httpHeaders 会应用到
+  # m3u8 / ts / key 的全部请求——这是带 Cookie 拉加密 key 的关键。
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:
