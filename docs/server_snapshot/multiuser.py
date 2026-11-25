@@ -218,7 +218,13 @@ def _transcode(src_path, dest_dir, prog_file, ffprog, log_file):
         key_info = os.path.join(dest_dir, "key.info")
         with open(key_info, "w") as f:
             # ffmpeg key_info_file：第1行URI、第2行key文件路径、第3行IV(hex,空=自动)
-            f.write("%s/key/%s\n" % (scheme, os.path.basename(dest_dir)))
+            #
+            # ⚠️ URI 必须写**相对路径** `/key/<id>`，不要写绝对 URL。
+            # 历史视频全部是相对路径，客户端（Android App 的 MediaProxy）
+            # 依赖这一点把 key 请求重写到本机代理，从而绕过网络对
+            # `SNI=*.ccwu.cc` 的 TLS 阻断（详见 App docs/P5_ACCEPTANCE.md）。
+            # 写成绝对 URL 会让播放器直连 51play.ccwu.cc 并被阻断 → 黑屏。
+            f.write("/key/%s\n" % os.path.basename(dest_dir))
             f.write(key_path + "\n")
             f.write("00000000000000000000000000000000\n")
 

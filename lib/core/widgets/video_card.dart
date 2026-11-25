@@ -33,13 +33,29 @@ class VideoCard extends StatelessWidget {
   /// 点击回调（P4 跳播放页占位）。
   final VoidCallback? onTap;
 
+  /// 上传者名称的兜底值。
+  ///
+  /// 「我的视频」用：`/api/my_videos` 不返回 owner_id，无法按 id 查映射，
+  /// 传当前用户名进来，避免显示成"其他用户"。
+  final String? ownerFallback;
+
   const VideoCard({
     super.key,
     required this.video,
     required this.owners,
     this.isList = false,
     this.onTap,
+    this.ownerFallback,
   });
+
+  /// 解析上传者显示名。
+  String get _ownerName {
+    final fb = ownerFallback;
+    if (fb != null && fb.isNotEmpty) {
+      return VideoRepository.ownerNameOr(owners, video, fb);
+    }
+    return VideoRepository.ownerName(owners, video);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +174,7 @@ class VideoCard extends StatelessWidget {
 
   /// `上传者 · 时长`（对应 Web 端 .card-meta）。
   Widget _metaRow() {
-    final owner = VideoRepository.ownerName(owners, video);
+    final owner = _ownerName;
     final dur = fmtDuration(video.duration);
     return Row(
       children: [
@@ -184,7 +200,7 @@ class VideoCard extends StatelessWidget {
   /// 列表模式信息行：`上传者 | 时长 | 播放数 | 上传时间`。
   /// 对应 Web 端 `card-info`（app.js:255）。整行不换行，超出省略。
   Widget _infoRow() {
-    final owner = VideoRepository.ownerName(owners, video);
+    final owner = _ownerName;
     final dur = fmtDuration(video.duration);
     final parts = <String>[
       owner,

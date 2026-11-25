@@ -145,19 +145,15 @@ class _MyVideosPageState extends State<MyVideosPage> {
       );
     }
 
-    // /api/my_videos 无 owner_id，用当前用户名补一个映射，
-    // 这样 VideoCard 里 owner 显示正确（不显示"其他用户"）。
-    final owners = <String, String>{};
-    for (final v in _videos) {
-      final id = v.ownerId;
-      if (id != null) owners[id.toString()] = username;
-    }
-
+    // /api/my_videos 不返回 owner_id（服务端 multiuser.my_videos 的 SELECT
+    // 里没有该列），所以无法按 id 建映射。直接把当前用户名作为兜底名传给
+    // VideoGrid，避免卡片显示成"其他用户"。
     return RefreshIndicator(
       onRefresh: () => _load(silent: true),
       child: VideoGrid(
         videos: _videos,
-        owners: owners,
+        owners: const {},
+        ownerFallback: username,
         layout: _layout,
         onTap: (v) => context.push(AppRoutes.playerOf(v.id)),
         physics: const AlwaysScrollableScrollPhysics(),

@@ -17,6 +17,8 @@ import '../features/devices/devices_page.dart';
 import '../features/player/player_page.dart';
 import '../features/register/register_page.dart';
 import '../features/upload/upload_page.dart';
+import '../features/upload/upload_progress_page.dart';
+import '../features/upload/upload_records_page.dart';
 import '../features/videos/home_page.dart';
 import '../features/videos/my_videos_page.dart';
 import '../features/videos/video_detail_page.dart';
@@ -32,6 +34,8 @@ class AppRoutes {
   static const videoDetail = '/videos/:id';
   static const player = '/player/:id';
   static const upload = '/upload';
+  static const uploadRecords = '/upload-records';
+  static const uploadProgress = '/upload-progress/:jobId';
   static const register = '/register';
   static const me = '/me';
   static const myVideos = '/my-videos';
@@ -39,6 +43,7 @@ class AppRoutes {
 
   static String videoDetailOf(String id) => '/videos/$id';
   static String playerOf(String id) => '/player/$id';
+  static String uploadProgressOf(String jobId) => '/upload-progress/$jobId';
 }
 
 /// 构建路由表。需要 AuthController 供守卫使用。
@@ -95,6 +100,16 @@ GoRouter buildRouter(AuthController auth) {
       GoRoute(
         path: AppRoutes.upload,
         builder: (context, state) => const UploadPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.uploadRecords,
+        builder: (context, state) => const UploadRecordsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.uploadProgress,
+        builder: (context, state) => UploadProgressPage(
+          jobId: state.pathParameters['jobId'] ?? '',
+        ),
       ),
       GoRoute(
         path: AppRoutes.register,

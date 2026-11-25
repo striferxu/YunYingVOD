@@ -20,6 +20,9 @@ class VideoGrid extends StatelessWidget {
   final ListLayout layout;
   final void Function(Video v)? onTap;
 
+  /// 上传者兜底名（「我的视频」传当前用户名；广场为 null）。
+  final String? ownerFallback;
+
   /// 是否可滚动。放在 RefreshIndicator 里时由外部控制。
   final bool shrinkWrap;
   final ScrollPhysics? physics;
@@ -31,6 +34,7 @@ class VideoGrid extends StatelessWidget {
     required this.owners,
     required this.layout,
     this.onTap,
+    this.ownerFallback,
     this.shrinkWrap = false,
     this.physics,
     this.padding = const EdgeInsets.all(AppTheme.gap12),
@@ -49,6 +53,7 @@ class VideoGrid extends StatelessWidget {
           video: videos[i],
           owners: owners,
           isList: true,
+          ownerFallback: ownerFallback,
           onTap: onTap == null ? null : () => onTap!(videos[i]),
         ),
       );
@@ -70,6 +75,7 @@ class VideoGrid extends StatelessWidget {
         video: videos[i],
         owners: owners,
         isList: false,
+        ownerFallback: ownerFallback,
         onTap: onTap == null ? null : () => onTap!(videos[i]),
       ),
     );

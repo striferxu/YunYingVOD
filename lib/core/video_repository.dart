@@ -61,4 +61,19 @@ class VideoRepository {
     final name = owners[id.toString()];
     return (name == null || name.isEmpty) ? '其他用户' : name;
   }
+
+  /// 取昵称，带兜底名。
+  ///
+  /// 「我的视频」用：`GET /api/my_videos` **不返回 owner_id**（服务端
+  /// `multiuser.my_videos` 只查 id/name/date/cover/duration/size_bytes/
+  /// status/views/created_at），所以无法按 id 查映射。这类场景调用方直接
+  /// 把当前用户名当兜底传进来，避免显示成"其他用户"。
+  static String ownerNameOr(Map<String, String> owners, Video v, String fallback) {
+    final id = v.ownerId;
+    if (id != null) {
+      final name = owners[id.toString()];
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return fallback;
+  }
 }

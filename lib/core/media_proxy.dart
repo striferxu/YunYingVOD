@@ -140,17 +140,55 @@ class MediaProxy {
     }
   }
 
-  /// 把 m3u8 里的 `URI="/key/<id>"` 改成指向本代理的绝对地址。
+  /// 把 m3u8 里的 `URI="..."` 改成指向本代理的绝对地址。
+  ///
+  /// 三种情况都要处理（实测踩过坑）：
+  ///   1. **相对路径** `URI="/key/<id>"` —— 历史视频都是这种，直接加本代理前缀。
+  ///   2. **本站绝对 URL** `URI="https://51play.ccwu.cc/key/<id>"` ——
+  ///      服务端 `multiuser.py` 曾按 `SITEAUTH_PUBLIC` 写入绝对 URL。
+  ///      这种必须**改写回本代理**，否则播放器会直连域名、再次撞上
+  ///      SNI 阻断导致黑屏（P6 真机验收暴露的真实缺陷）。
+  ///   3. **其他域名的绝对 URL**（CDN 等）—— 原样保留，代理无权代发。
   ///
   /// 用绝对地址而不是相对路径，是为了不依赖播放器对相对 URI 的解析行为
   /// （相对 URI 在 HLS 里是相对 m3u8 的位置，虽然结果相同，但显式更稳）。
-  String _rewritePlaylist(String body) {
+  String _rewritePlaylist(String body) =>
+      rewritePlaylist(body, localUrl: localUrl, upstreamBase: _upstreamBase);
+
+  /// 纯函数版本，便于单测（不依赖真实 server/网络）。
+  ///
+  /// 三种情况都要处理（实测踩过坑）：
+  ///   1. **相对路径** `URI="/key/<id>"` —— 历史视频都是这种，直接加本代理前缀。
+  ///   2. **本站绝对 URL** `URI="https://51play.ccwu.cc/key/<id>"` ——
+  ///      服务端 `multiuser.py` 曾按 `SITEAUTH_PUBLIC` 写入绝对 URL。
+  ///      这种必须**改写回本代理**，否则播放器会直连域名、再次撞上
+  ///      SNI 阻断导致黑屏（P6 真机验收暴露的真实缺陷）。
+  ///   3. **其他域名的绝对 URL**（CDN 等）—— 原样保留，代理无权代发。
+  static String rewritePlaylist(
+    String body, {
+    required String localUrl,
+    required String upstreamBase,
+  }) {
+    final upstreamHost = Uri.tryParse(upstreamBase)?.host ?? '';
     return body.replaceAllMapped(
       RegExp(r'URI="([^"]+)"'),
       (m) {
         final uri = m.group(1)!;
-        if (uri.startsWith('http://') || uri.startsWith('https://')) return m.group(0)!;
-        // 相对路径（可能是 /key/xxx 或 key/xxx）
+
+        // 情况 2：本站绝对 URL → 提取 path 后走本代理
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+          final parsed = Uri.tryParse(uri);
+          if (parsed != null && parsed.host == upstreamHost) {
+            final path = parsed.path;
+            if (_allowedPrefixes.any(path.startsWith)) {
+              return 'URI="$localUrl$path"';
+            }
+          }
+          // 情况 3：外部域名，原样保留
+          return m.group(0)!;
+        }
+
+        // 情况 1：相对路径（可能是 /key/xxx 或 key/xxx）
         final abs = uri.startsWith('/') ? uri : '/$uri';
         return 'URI="$localUrl$abs"';
       },

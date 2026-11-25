@@ -34,6 +34,12 @@ dependencies:
   # HLS 播放（P5）。Android 底层是 ExoPlayer，httpHeaders 会应用到
   # m3u8 / ts / key 的全部请求——这是带 Cookie 拉加密 key 的关键。
   video_player: ^2.9.2
+  # 流式 multipart 上传 + 上传进度（P6）。用 dio 的 MultipartFile.fromStream，
+  # 禁止把整个视频 readAsBytes 进内存（2GB 文件会直接 OOM）。
+  dio: ^5.7.0
+  # 系统文件选择器（P6），限定 video/* 类型
+  # 13.x 起才与 device_info_plus 13.x 的 win32 约束兼容
+  file_picker: ^13.4.1
 
 dev_dependencies:
   flutter_test:

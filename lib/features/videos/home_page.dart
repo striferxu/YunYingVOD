@@ -128,6 +128,18 @@ class _MyTab extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push(AppRoutes.myVideos),
               ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.cloud_upload_outlined,
+                    color: AppTheme.seed),
+                title: const Text('上传记录'),
+                subtitle: const Text(
+                  '查看上传与转码进度（含中断的任务）',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push(AppRoutes.uploadRecords),
+              ),
             ],
           ),
         ),

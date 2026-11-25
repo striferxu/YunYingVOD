@@ -149,31 +149,81 @@ void main() {
     });
   });
 
-  group('UploadJob.fromJson', () {
-    test('progress 0-100 归一化为 0-1', () {
-      final j = UploadJob.fromJson({'job_id': 'j1', 'status': 'running', 'progress': 62});
-      expect(j.progress, closeTo(0.62, 0.0001));
-      expect(j.percent, 62);
+  group('UploadJob 状态机', () {
+    UploadJob job({UploadStatus status = UploadStatus.queued}) => UploadJob(
+          jobId: 'j1',
+          title: '测试',
+          createdAt: 1,
+          status: status,
+        );
+
+    test('mergeStatus 解析 running + percent + eta', () {
+      final j = job().mergeStatus({
+        'id': 'j1',
+        'status': 'running',
+        'percent': 62.4,
+        'eta_seconds': 130,
+        'current_seconds': 100.0,
+        'total_seconds': 265.0,
+        'error': null,
+        'result_id': null,
+      });
       expect(j.status, UploadStatus.running);
+      expect(j.percentInt, 62);
+      expect(j.etaSeconds, 130);
+      expect(j.totalSeconds, 265.0);
+      expect(j.status.isFinal, isFalse);
     });
 
-    test('progress 已是 0-1 时不重复除', () {
-      final j = UploadJob.fromJson({'job_id': 'j2', 'status': 'done', 'progress': 0.85});
-      expect(j.progress, closeTo(0.85, 0.0001));
-      expect(j.status.isTerminal, isTrue);
+    test('mergeStatus done 带 result_id', () {
+      final j = job().mergeStatus({
+        'status': 'done',
+        'percent': 0.0,
+        'result_id': '97c4e6fe',
+      });
+      expect(j.status, UploadStatus.done);
+      expect(j.resultId, '97c4e6fe');
+      expect(j.status.isFinal, isTrue);
     });
 
-    test('queued 状态（转码单并发排队）', () {
-      final j = UploadJob.fromJson({'job_id': 'j3', 'status': 'queued', 'progress': 0});
+    test('mergeStatus queued（转码单并发排队）', () {
+      final j = job().mergeStatus({'status': 'queued', 'percent': null});
       expect(j.status, UploadStatus.queued);
       expect(j.status.label, '排队中');
-      expect(j.status.isTerminal, isFalse);
+      expect(j.percent, isNull);
     });
 
-    test('failed 带 error 文案', () {
-      final j = UploadJob.fromJson({'job_id': 'j4', 'status': 'failed', 'error': '转码失败'});
+    test('mergeStatus failed 带 error 文案', () {
+      final j = job().mergeStatus({'status': 'failed', 'error': '转码失败'});
       expect(j.status, UploadStatus.failed);
       expect(j.error, '转码失败');
+      expect(j.status.isFinal, isTrue);
+    });
+
+    test('percent 为 null 时 percentInt 回落 0', () {
+      final j = job().mergeStatus({'status': 'running', 'percent': null});
+      expect(j.percent, isNull);
+      expect(j.percentInt, 0);
+    });
+
+    test('JSON 往返保持字段', () {
+      final j = job(status: UploadStatus.running).copyWith(
+        jobId: 'abc12345',
+        percent: 40,
+        etaSeconds: 60,
+        uploadProgress: 1.0,
+      );
+      final back = UploadJob.fromJson(j.toJson());
+      expect(back.jobId, 'abc12345');
+      expect(back.status, UploadStatus.running);
+      expect(back.percent, 40);
+      expect(back.etaSeconds, 60);
+      expect(back.title, '测试');
+    });
+
+    test('unknown 状态按 queued 兜底（服务端异常不崩）', () {
+      final j = job().mergeStatus({'status': 'weird-status'});
+      expect(j.status, UploadStatus.queued);
     });
   });
 }
