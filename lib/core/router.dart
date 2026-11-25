@@ -18,7 +18,7 @@ import '../features/player/player_page.dart';
 import '../features/register/register_page.dart';
 import '../features/upload/upload_page.dart';
 import '../features/videos/home_page.dart';
-import '../features/videos/my_page.dart';
+import '../features/videos/my_videos_page.dart';
 import '../features/videos/video_detail_page.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
@@ -34,6 +34,7 @@ class AppRoutes {
   static const upload = '/upload';
   static const register = '/register';
   static const me = '/me';
+  static const myVideos = '/my-videos';
   static const devices = '/devices';
 
   static String videoDetailOf(String id) => '/videos/$id';
@@ -100,8 +101,8 @@ GoRouter buildRouter(AuthController auth) {
         builder: (context, state) => const RegisterPage(),
       ),
       GoRoute(
-        path: AppRoutes.me,
-        builder: (context, state) => const MyPage(),
+        path: AppRoutes.myVideos,
+        builder: (context, state) => const MyVideosPage(),
       ),
       GoRoute(
         path: AppRoutes.devices,

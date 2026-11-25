@@ -1,7 +1,7 @@
-/// home_page.dart — 首页 / 视频广场。
+/// home_page.dart — 首页外壳：广场 / 我的 两个 Tab。
 ///
-/// P3：广场仍是占位（P4 接真实列表），但"我的"页已是真实账号页：
-/// 显示当前用户、角色、设备管理入口、登出。
+/// P4：广场接入真实列表（PlazaPage），"我的"页启用"我的视频"入口。
+/// 搜索框放在广场页内部（与 Web 端一致，搜索只作用于广场列表）。
 library;
 
 import 'package:go_router/go_router.dart';
@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import '../../core/auth_controller.dart';
 import '../../core/router.dart';
 import '../../core/theme.dart';
-import '../../core/widgets/state_views.dart';
+import 'plaza_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,16 +33,8 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_tabIndex == 0 ? '视频广场' : '我的'),
-        actions: [
-          if (_tabIndex == 0)
-            IconButton(
-              tooltip: '搜索（P4）',
-              onPressed: () => _toast('搜索功能在 P4 阶段实现'),
-              icon: const Icon(Icons.search_rounded),
-            ),
-        ],
       ),
-      body: _tabIndex == 0 ? const _PlazaPlaceholder() : const _MyTab(),
+      body: _tabIndex == 0 ? const PlazaPage() : const _MyTab(),
       floatingActionButton: _tabIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () => context.push(AppRoutes.upload),
@@ -63,25 +55,6 @@ class _HomePageState extends State<HomePage> {
                 ))
             .toList(),
       ),
-    );
-  }
-
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(msg)));
-  }
-}
-
-class _PlazaPlaceholder extends StatelessWidget {
-  const _PlazaPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyView(
-      icon: Icons.movie_filter_outlined,
-      message: '视频广场',
-      hint: 'P3 阶段：列表在 P4 实现\n届时接入 /api/videos，支持网格/列表切换与搜索',
     );
   }
 }
@@ -148,9 +121,12 @@ class _MyTab extends StatelessWidget {
                 leading: const Icon(Icons.video_library_outlined,
                     color: AppTheme.seed),
                 title: const Text('我的视频'),
-                subtitle: const Text('P4 阶段实现', style: TextStyle(fontSize: 12)),
+                subtitle: const Text(
+                  '查看我上传的全部视频',
+                  style: TextStyle(fontSize: 12),
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                enabled: false,
+                onTap: () => context.push(AppRoutes.myVideos),
               ),
             ],
           ),

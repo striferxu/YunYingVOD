@@ -29,6 +29,8 @@ dependencies:
   device_info_plus: ^13.3.0
   # 网络状态（弱网/断网提示）
   connectivity_plus: ^7.3.2
+  # 布局偏好持久化（键名 home_layout，与 Web 端 localStorage 同名）
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
