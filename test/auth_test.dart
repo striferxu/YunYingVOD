@@ -20,8 +20,11 @@ void main() {
     test('401 统一提示"用户名或密码错误"，不暴露用户是否存在', () {
       // 服务端对 用户不存在 / 密码错 / pending 审核 一律返回 401 同文案，
       // 客户端必须保持模糊，防止用户枚举。
-      final err = AuthError('用户名或密码错误', statusCode: 401);
-      expect(err.message, '用户名或密码错误');
+      // P7 起文案补上「或账号正在等待管理员审核」。
+      final err = AuthError('用户名或密码错误，或账号正在等待管理员审核',
+          statusCode: 401);
+      expect(err.message, contains('用户名或密码错误'));
+      expect(err.message, contains('等待管理员审核'));
       expect(err.locked, isFalse);
       expect(err.rateLimited, isFalse);
     });

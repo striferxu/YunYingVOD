@@ -24,6 +24,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
+import 'models/register_result.dart';
 import 'models/user.dart';
 import 'session_store.dart';
 
@@ -227,7 +228,13 @@ class AuthController extends ChangeNotifier {
       );
     }
     if (e.statusCode == 401) {
-      return const AuthError('用户名或密码错误', statusCode: 401);
+      // 服务端对「密码错」「用户不存在」「账号 pending 待审核」一律返回
+      // 401 Invalid credentials（实测确认，刻意防用户枚举），客户端也不区分。
+      // P7 起文案补上「或账号待审核」，否则新注册用户会困惑于"密码明明没错"。
+      return const AuthError(
+        '用户名或密码错误，或账号正在等待管理员审核',
+        statusCode: 401,
+      );
     }
     if (e.statusCode == 403) {
       return AuthError('请求被拒绝（${e.message}）', statusCode: 403);
@@ -236,6 +243,100 @@ class AuthController extends ChangeNotifier {
       return AuthError(e.message);
     }
     return AuthError(e.message, statusCode: e.statusCode);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 注册（P7，审核制）
+  // ---------------------------------------------------------------------------
+
+  /// 用户名规则，与后端 `USERNAME_RE` 完全一致。
+  static final RegExp usernamePattern = RegExp(r'^[A-Za-z0-9_.-]{3,32}$');
+
+  /// 提交注册申请。成功返回 [RegisterResult]，失败抛 [AuthError]。
+  ///
+  /// 服务端行为（契约 §5，全部实测过）：
+  ///   * 200 → `{"ok":true,"id":N,"username":"x","status":"pending","message":"..."}`
+  ///   * 409 → `{"error":"username already exists"}`（不区分大小写查重）
+  ///   * 400 → 用户名/密码/昵称格式错误，`error` 为中文文案
+  ///   * 403 → 注册已关闭（当前不会出现）
+  ///
+  /// 该接口**公开**，不需要 Cookie，也不会建立会话（注册完仍要等审核）。
+  Future<RegisterResult> register({
+    required String username,
+    required String nickname,
+    required String password,
+  }) async {
+    final u = username.trim();
+    final n = nickname.trim();
+
+    // 前端校验放在这里而不是只放页面，保证任何入口都一致。
+    if (!usernamePattern.hasMatch(u)) {
+      throw const AuthError(RegisterResult.usernameRuleText, statusCode: 400);
+    }
+    if (password.isEmpty) {
+      throw const AuthError('请输入密码', statusCode: 400);
+    }
+    if (password.length < 6) {
+      throw const AuthError('密码至少 6 位', statusCode: 400);
+    }
+    if (password.length > 256) {
+      throw const AuthError('密码过长（最多 256 位）', statusCode: 400);
+    }
+    if (n.length > 64) {
+      throw const AuthError('昵称过长（最多 64 字）', statusCode: 400);
+    }
+
+    ApiResponse resp;
+    try {
+      resp = await _api.post('/api/register', body: {
+        'username': u,
+        // 后端 nickname 为空时自动用 username，但 Web 端强制填，
+        // 这里保持一致：空则回落到用户名。
+        'nickname': n.isEmpty ? u : n,
+        'password': password,
+      });
+    } on ApiException catch (e) {
+      throw _translateRegisterError(e);
+    }
+
+    return RegisterResult(
+      id: (resp.data['id'] as num?)?.toInt(),
+      username: (resp.data['username'] ?? u).toString(),
+      status: (resp.data['status'] ?? 'pending').toString(),
+      message: (resp.data['message'] ?? '注册成功，账号待管理员审核后即可登录')
+          .toString(),
+    );
+  }
+
+  AuthError _translateRegisterError(ApiException e) {
+    if (e.isRateLimited) {
+      return const AuthError('操作过于频繁，请稍后再试',
+          rateLimited: true, statusCode: 503);
+    }
+    if (e.statusCode == 409) {
+      return const AuthError('该用户名已被占用，请换一个', statusCode: 409);
+    }
+    if (e.statusCode == 400) {
+      // 后端中文文案已经足够友好，直接展示
+      return AuthError(_humanizeRegister400(e.message), statusCode: 400);
+    }
+    if (e.statusCode == 403) {
+      return AuthError('注册暂未开放（${e.message}）', statusCode: 403);
+    }
+    if (e.statusCode == null) {
+      return AuthError('网络连接失败，请检查网络后重试');
+    }
+    return AuthError(e.message, statusCode: e.statusCode);
+  }
+
+  /// 后端 400 文案里带英文关键词（如 `username 需为...`），统一成中文表述。
+  static String _humanizeRegister400(String raw) {
+    final m = raw.toLowerCase();
+    if (m.contains('username')) return RegisterResult.usernameRuleText;
+    if (m.contains('password required')) return '请输入密码';
+    if (m.contains('password too long')) return '密码过长（最多 256 位）';
+    if (m.contains('nickname too long')) return '昵称过长（最多 64 字）';
+    return raw;
   }
 
   /// 登录前清理本地残留的旧 token（服务端一并删掉）。
