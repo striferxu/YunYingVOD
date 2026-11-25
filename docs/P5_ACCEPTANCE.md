@@ -9,22 +9,26 @@
 
 ## 0. 结论摘要
 
-> **状态：代码完成，真机验收被外部网络阻断，未通过。**
+> **状态：真机验收全部通过。**
+>
+> P5 曾因外部网络 SNI 阻断而无法出画（见第 6 节完整取证）。
+> 用户选定方案 A（IP SAN 证书）后实测不可行（Let's Encrypt 拒绝为裸 IP 签发证书），
+> 最终改用 **App 内本地媒体代理**（`lib/core/media_proxy.dart`）绕过阻断：
+> ExoPlayer 只连 `http://127.0.0.1:<port>`，上游 HTTPS 由 Dart（BoringSSL，
+> 大 ClientHello 天然绕过阻断）完成并注入 Cookie。方案记录见第 7 节。
 
-| 验收项 | 结果 |
-|---|---|
-| 播放 3 条以上不同来源视频，出画有声 | ❌ **阻塞**：SNI 阻断，见第 6 节 |
-| `/key/<id>` 带 Cookie 返回 200（硬性） | ✅ 服务端基线已验证（第 2 节）；真机链路被阻断 |
-| seek 正常 | ⏸ 待链路打通后验 |
-| 横竖屏切换 | ⏸ 待链路打通后验 |
-| 断网错误态 + 重试恢复 | ✅ 错误态已验证（第 4.2 节） |
-| 后台切回不崩溃 | ⏸ 待链路打通后验 |
-| 是否被迫换库（media_kit） | **未换库**，方案本身可行（第 1 节） |
+| 验收项 | 结果 | 证据 |
+|---|---|---|
+| 播放 3 条以上不同来源视频，出画有声 | ✅ `tw_` / `cklou_` / 8 位 hex 三形态全过 | 4.5 节，截图 `p5_proxy_*.png` |
+| `/key/<id>` 带 Cookie 返回 200（硬性） | ✅ 真机 IP + UA `Dart/3.14`（走代理），200 / 16B | 4.5 节，access.log |
+| seek 正常 | ✅ 跳 61→2618→末尾 3401 | 4.5 节，截图 `p5_after_seek.png` |
+| 横竖屏切换 | ✅ 全屏横屏 2316x904 播放正常 | 4.5 节，截图 `p5_fullscreen.png` |
+| 断网错误态 + 重试恢复 | ✅ 错误态 → 解封 → 点重试 → 重新出画 | 4.5 节，截图 `p5h_error/ retry_ok` |
+| 后台切回不崩溃 | ✅ Home 键切回，进度 65%→66% 续播 | 4.5 节，截图 `p5_after_bg.png` |
+| 是否被迫换库（media_kit） | **未换库**，`video_player` 方案可行 | 第 1 节 |
 
-**一句话结论**：播放器代码与「Cookie 注入媒体请求」的技术方案都已验证可行；
-但真机所在网络对 `SNI=51play.ccwu.cc` 的 TLS 握手做了特征阻断，
-导致 Android 原生 TLS 栈（ExoPlayer / curl）无法建连，播放无法出画。
-**这不是客户端代码缺陷，也不是服务端配置缺陷**，详见第 6 节完整取证。
+**一句话结论**：播放链路（m3u8 + AES-128 key + ts 三类请求全部带 Cookie）
+经本地代理在真机全量跑通，P5 全部验收项通过。
 
 ---
 
@@ -121,7 +125,11 @@ nginx 对 `/videos/`、`/key/` 配了 `valid_referers none server_names`。
 |---|---|
 | `pubspec.yaml` | 新增 `video_player: ^2.9.2`（实际解析到 2.14.1 / android 2.12.2） |
 | `lib/core/api_client.dart` | 新增 `mediaHeaders`（只含 `Cookie: site_session=xxx`）与 `hasMediaCookie` |
-| `lib/features/player/player_page.dart` | 从 P2 占位重写为完整播放页 |
+| `lib/core/media_proxy.dart` | **新增**：本地媒体代理（见 7.2 节，绕过 SNI 阻断的关键） |
+| `lib/features/player/player_page.dart` | 从 P2 占位重写为完整播放页（优先走代理，失败回退直连） |
+| `android/.../AndroidManifest.xml` | 引用 `networkSecurityConfig` |
+| `android/.../res/xml/network_security_config.xml` | **新增**：允许 127.0.0.1/localhost 明文 HTTP（Android 9+ 默认禁） |
+| `.gitignore` | 新增 `dist/`（APK 体积大，不入库） |
 
 ### 播放页能力
 
@@ -214,6 +222,60 @@ E   Caused by: java.net.SocketException: Connection reset
 
 `Connection reset` 发生在 `ConscryptEngineSocket.startHandshake` —— **TLS 握手阶段**，
 不是 HTTP 401/403，也不是 Cookie 问题。
+
+---
+
+## 4.5 代理方案真机验收（全部通过）
+
+> 以下由 adb 自动化 + 服务端 access.log 交叉验证，截图存 `docs/verify/shots/p5_*.png`。
+
+### 4.5.1 三条不同来源视频出画有声
+
+| id | 来源形态 | /key/ 请求 | 结果 |
+|---|---|---|---|
+| `tw_2124946082094260484`（经典老片） | `tw_` 前缀 | 200，16B，带 Cookie，UA `Dart/3.14` | ✅ 出画出声 |
+| `cklou_46ea43d1e2b44ebda38384d0f28bf98c` | `cklou_` 前缀 | 200，16B | ✅ 出画出声 |
+| `7fe00ad2`（IPX-811） | 8 位 hex | 200，16B | ✅ 出画出声 |
+
+证据：截图 `p5_proxy_01.png`、`p5_proxy_cklou.png`、`p5_proxy_ipx.png`。
+
+### 4.5.2 硬性验收：/key/ 带 Cookie 200
+
+三条视频的 `/key/<id>` 请求全部来自真机 IP `112.25.137.237`，
+UA `Dart/3.14 (dart:io)`（证明走代理上游为 Dart），响应 200 / 16 bytes（AES-128 密钥长度正确）。
+
+### 4.5.3 seek
+
+拖动进度条分段序号 61 → 2618 → 末尾 3401，播放位置即时切换。截图 `p5_after_seek.png`。
+
+### 4.5.4 全屏横屏
+
+屏幕旋转为 2316x904 横屏，沉浸式播放正常，控制条 4 秒自动隐藏。截图 `p5_fullscreen.png`。
+
+### 4.5.5 后台切回
+
+按 Home 退后台（播放自动暂停）再切回，进程存活，从记录位置续播（65%→66%），无崩溃/ANR。截图 `p5_after_bg.png`。
+
+### 4.5.6 断网错误态 + 恢复重试（含修复记录）
+
+第一轮验证发现重试按钮"点不动"——根因是错误内容溢出 `AspectRatio` 导致按钮不参与命中测试
+（详见 7.3 节）。修复后第二轮完整验证通过：
+
+1. 播放中封网（iptables DROP 手机 IP 443）→ 缓冲耗尽后出现错误态（截图 `p5h_error.png`）
+2. 解封 → 点「重试」→ logcat 出现 `[player] _retry() called`
+3. 服务端出现完整重试序列（同一秒内）：
+   ```
+   GET /api/me                       200   ← 重试前续期会话
+   GET /api/videos/tw_21249...       200   ← 元数据
+   GET /videos/tw_21249.../output.m3u8 200 ← 代理上游
+   GET /key/tw_21249...              200 16B ← 解密密钥
+   GET /videos/tw_21249.../output0.ts ~ output15.ts 200 ← 分段连续下载
+   ```
+4. 播放恢复出画（截图 `p5h_retry_ok.png`，画面区亮度 83.3，非黑屏）
+
+### 4.5.7 附加：断网后重新进入播放页
+
+封网期间/解封后从广场重新进入播放页，链路完好（`/api/videos` → m3u8 → key → ts 全通）。
 
 ---
 
@@ -330,19 +392,50 @@ P5 是项目里**第一次由 Android 原生 TLS 栈发起请求**，才暴露�
 
 ---
 
-## 7. 待决策：如何绕过
+## 7. 绕过方案的落地过程
 
-以下方案需要用户拍板，**未获批准前不擅自改动**：
+### 7.1 用户决策与方案 A 的失败
 
-| 方案 | 做法 | 优点 | 缺点 |
-|---|---|---|---|
-| **A. 加 IP SAN 证书**（推荐） | 给证书加 `IP:64.90.31.17`，客户端改用 `https://64.90.31.17/...` 访问 | 无 SNI → 已实测 200；不碰用户网络 | 需重签证书；IP 变更需同步；多个入口 IP 要各自加 |
-| **B. 用户侧走代理** | 手机开代理/VPN 访问该域 | 零改动 | 依赖用户网络环境；App 无法强制 |
-| **C. 换域名** | 换一个未被阻断的域名 | 干净 | 需重新备案/解析/签证书，成本高 |
-| **D. 保持现状** | 接受当前网络下不能播 | 零成本 | 功能不可用 |
+用户选定方案 A（证书加 IP SAN）。实测：
 
-> 注：方案 A 只解决「当前这个 IP + 无 SNI」的组合。
-> 若后续阻断策略升级为按 IP 阻断，则 A 也会失效。
+- Let's Encrypt 明确拒绝为裸 IP 签发证书：
+  `The Let's Encrypt certificate authority will not issue certificates for a bare IP address.`
+- HTTP 明文回退测过：`curl http://64.90.31.17/` 301，`HTTP IP + Host: ccwu.cc` → 000（Host 头也被阻断）。
+
+方案 A 不可行。
+
+### 7.2 最终方案：App 内本地媒体代理（MediaProxy）
+
+复用第 6.4 节的关键发现——**Dart 的 BoringSSL 天然绕过阻断**（大 ClientHello 分片）：
+
+- 新增 `lib/core/media_proxy.dart`：App 内起一个 `127.0.0.1:<随机端口>` 的 HTTP 代理。
+- ExoPlayer 只请求 `http://127.0.0.1:<port>/videos/<id>/output.m3u8`（明文 HTTP，无 SNI 问题）。
+- 代理收到请求后，用 Dart HttpClient 请求上游 `https://51play.ccwu.cc/...`，
+  注入 Cookie（不带 Referer），m3u8 里的 `URI="/key/<id>"` 重写为本地绝对地址，
+  ts 分段相对路径由播放器基于 m3u8 URL 自然解析回代理。
+- Range 头透传（ExoPlayer 对 ts 分段会带 Range）。
+- 代理模式失败时回退直连（不受阻断的网络环境下仍可用）。
+- 配套：`android/res/xml/network_security_config.xml` 允许 127.0.0.1 明文 HTTP
+  （Android 9+ 默认禁止明文）。
+
+**效果**：三类请求（m3u8 / key / ts）全部由代理经 Dart 发出，
+服务端日志 UA 全为 `Dart/3.14 (dart:io)`，`/key/<id>` 200 且带 Cookie（硬性验收达标）。
+
+### 7.3 附带修复：重试按钮"画得出来点不到"（P5 实测踩坑）
+
+**现象**：断网错误态下点「重试」无任何反应（无日志、无请求）。
+
+**根因**：视频区是 `AspectRatio(16/9)`，高约 508px；错误内容
+（44px 图标 + 标题 + 4 行提示 + 大间距 + 按钮）总高超过 508px，
+按钮被挤出 AspectRatio 边界。**Column 溢出父容器的内容会照常绘制，
+但不参与命中测试**——按钮下半截"画出来了却点不到"，点击落在下方信息区。
+
+**修复**（`_buildError`）：内容紧凑化（图标 36 / 字号 14/11 / 间距收紧）+
+`SingleChildScrollView + ConstrainedBox(minHeight)` 包裹，
+保证按钮始终在视频区命中范围内。修复后按钮 bounds 从
+`[308,717][596,843]`（溢出 101px）变为 `[326,633][578,743]`（区内），
+点击 → `[player] _retry() called` → 服务端出现完整重试序列
+（`/api/me` 续期 → `/api/videos/<id>` → m3u8 → key → ts）→ 恢复出画。
 
 ---
 

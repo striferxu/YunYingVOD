@@ -35,6 +35,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/api_client.dart';
 import '../../core/auth_controller.dart';
+import '../../core/media_proxy.dart';
 import '../../core/models/video.dart';
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -60,6 +61,10 @@ class PlayerPage extends StatefulWidget {
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   Video? _meta;
+
+  /// 本地媒体代理（P5 网络绕行，见 media_proxy.dart）。
+  /// 起不来时为 null，回退到直连上游。
+  MediaProxy? _proxy;
 
   bool _loading = true;
   _PlayerError? _error;
@@ -90,6 +95,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _controller?.dispose();
+    _proxy?.close();
     // 退出时恢复默认方向
     if (_fullscreen) {
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
@@ -166,8 +172,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   Future<void> _createController() async {
-    final url = ApiClient().absoluteUrl('/videos/${widget.videoId}/output.m3u8');
-    final headers = ApiClient().mediaHeaders;
+    // 优先走本地代理：由 Dart 完成上游 HTTPS（Dart 的 TLS 栈能通过当前网络），
+    // ExoPlayer 只连 127.0.0.1 的明文 HTTP。代理起不来才回退直连。
+    _proxy ??= await MediaProxy.start();
+    final proxy = _proxy;
+
+    final String url;
+    final Map<String, String> headers;
+    if (proxy != null) {
+      url = '${proxy.localUrl}/videos/${widget.videoId}/output.m3u8';
+      // Cookie 由代理注入，播放器不需要
+      headers = const {};
+    } else {
+      url = ApiClient().absoluteUrl('/videos/${widget.videoId}/output.m3u8');
+      headers = ApiClient().mediaHeaders;
+    }
 
     final c = VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -242,13 +261,40 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // ---------------------------------------------------------------------------
 
   Future<void> _retry() async {
-    // 重试前先试着续期会话（key/ts 401 的常见原因是 Cookie 过期）
-    await context.read<AuthController>().refreshSession(silent: true);
+    if (!mounted) return;
+    // 先给 UI 一个"正在重试"的即时反馈，避免用户以为按钮没反应
+    setState(() {
+      _loading = true;
+      _error = null;
+      _errorDetail = '';
+    });
+
+    // 1) 续期会话。注意：断网期间 refreshSession 会因为网络错误直接返回 false
+    //    但**不会**清登录态（这是 auth_controller 的既定行为），此时 Cookie 仍然
+    //    可用，所以不能因为返回 false 就放弃重试。
+    try {
+      await context.read<AuthController>().refreshSession(silent: true);
+    } catch (_) {
+      // 静默续期不应阻塞重试
+    }
     if (!mounted) return;
 
-    await _controller?.dispose();
+    // 2) 彻底重建：controller 与代理都丢掉。
+    //    代理持有的是启动时的 Cookie 快照，续期后必须重建才能用上新 Cookie。
+    final old = _controller;
     _controller = null;
+    old?.removeListener(_onControllerUpdate);
+    await old?.dispose();
+
+    final oldProxy = _proxy;
+    _proxy = null;
+    await oldProxy?.close();
+
+    if (!mounted) return;
     _lastPosition = Duration.zero;
+
+    // 3) 重新走完整启动流程
+    _initializing = false; // 允许 _start 进入
     await _start();
   }
 
@@ -522,59 +568,70 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
     return ColoredBox(
       color: Colors.black,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.gap24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 44, color: Colors.white38),
-              const SizedBox(height: AppTheme.gap12),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: AppTheme.gap8),
-              Text(
-                hint,
-                textAlign: TextAlign.center,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              const SizedBox(height: AppTheme.gap24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _retry,
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('重试'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white24),
-                      minimumSize: const Size(110, 42),
-                    ),
-                  ),
-                  if (err == _PlayerError.auth) ...[
-                    const SizedBox(width: AppTheme.gap12),
-                    FilledButton(
-                      onPressed: _goLogin,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.seed,
-                        foregroundColor: const Color(0xFF06231F),
-                        minimumSize: const Size(110, 42),
+      // 视频区高度固定（AspectRatio 16:9 ≈ 508px），错误内容（图标+标题+4行
+      // 提示+按钮）原生高度可能超过这个值：溢出 AspectRatio 的部分虽然会绘制
+      // 出来，但**不参与命中测试**——按钮会被"画出来却点不到"（P5 实测踩坑）。
+      // 所以这里：内容紧凑化 + 竖向可滚动，保证按钮始终在视频区内可点击。
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppTheme.gap16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 36, color: Colors.white38),
+                    const SizedBox(height: AppTheme.gap8),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
-                      child: const Text('去登录'),
+                    ),
+                    const SizedBox(height: AppTheme.gap8),
+                    Text(
+                      hint,
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                    const SizedBox(height: AppTheme.gap16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _retry,
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('重试'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white24),
+                            minimumSize: const Size(96, 38),
+                          ),
+                        ),
+                        if (err == _PlayerError.auth) ...[
+                          const SizedBox(width: AppTheme.gap12),
+                          FilledButton(
+                            onPressed: _goLogin,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.seed,
+                              foregroundColor: const Color(0xFF06231F),
+                              minimumSize: const Size(96, 38),
+                            ),
+                            child: const Text('去登录'),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
-                ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
