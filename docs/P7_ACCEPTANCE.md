@@ -175,7 +175,7 @@ id | username | nickname | role | status | created
 
 截图 `shots/p7_val1.png` / `p7_val1.xml`。
 
-**与后端文案逐字对比**（服务端实测，`docs/probe_p7.py` 第 4 节）：
+**与后端文案逐字对比**（服务端实测，`docs/tools/probe_p7.py` 第 4 节）：
 
 | 输入 | 后端返回 |
 |---|---|
@@ -223,7 +223,7 @@ AppBar: 管理员二维码
 ```
 
 服务端实测确认返回的是 `401 {"error":"Invalid credentials"}`
-（`docs/probe_p7.py` 第 7 节），与密码错误无法区分。
+（`docs/tools/probe_p7.py` 第 7 节），与密码错误无法区分。
 
 > **与任务书的偏差说明**：任务书允许两种处理——
 > 「若后端对 pending 返回的也是 401 Invalid credentials，则文案统一为
@@ -237,7 +237,7 @@ AppBar: 管理员二维码
 
 ---
 
-## 4. 服务端接口层验收（`docs/probe_p7.py`）
+## 4. 服务端接口层验收（`docs/tools/probe_p7.py`）
 
 在服务器本机（`127.0.0.1:8000`，绕过 nginx）执行，8 组用例全部 PASS：
 

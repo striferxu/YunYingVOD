@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_info.dart';
 import '../../core/auth_controller.dart';
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -155,7 +156,9 @@ class _MyTab extends StatelessWidget {
         const SizedBox(height: AppTheme.gap24),
         Center(
           child: Text(
-            '云影 VOD  v1.0.0',
+            // 必须与 pubspec.yaml 的 version 保持一致（CI 会用 tag 覆盖
+            // versionName，所以这里只作界面展示用途）。
+            '云影 VOD  v$kAppVersion',
             style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary),
           ),
         ),

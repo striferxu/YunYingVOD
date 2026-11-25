@@ -13,15 +13,16 @@
 |------|------|------|
 | P0 | API 契约冻结（全部实测） | ✅ |
 | P1 | 后端 app_tokens 四接口 | ✅ 已上线，25/25 实测通过 |
-| **P2** | **Flutter 项目骨架** | **✅ analyze 零问题 / 19 测试全绿 / APK 构建成功** |
-| **P3** | **登录与会话** | **✅ analyze 零问题 / 34 测试全绿 / 服务端 16/16 实测通过 / APK 构建成功** |
-| P4 | 视频广场 + 我的 | — |
-| P5 | 播放器（HLS AES-128） | — |
-| P6 | 上传与转码进度 | — |
-| P7 | 注册（审核制） | — |
-| P8 | 打包发布 | — |
+| P2 | Flutter 项目骨架 | ✅ analyze 零问题 / 19 测试全绿 |
+| P3 | 登录与会话 | ✅ 服务端 16/16 + 真机；修 2 个真机 bug |
+| P4 | 视频广场 + 我的 | ✅ 真机全过（33 条 ready） |
+| P5 | 播放器（HLS AES-128） | ✅ 真机全过（本地媒体代理绕过 SNI 阻断） |
+| P6 | 上传与转码进度 | ✅ 真机全过（99.5MB 全流程） |
+| P7 | 注册（审核制） | ✅ 真机全过 + 服务端 8 组边界 |
+| P8 | 打包发布 | ✅ CI 全绿，已发布 `v0.1.0` |
 
-详见 `PHASE_PLAN.md`。
+**P0–P8 全部完成并验收通过。** 阶段汇总见 `docs/PROJECT_OVERVIEW.md`，
+原始需求见 `PHASE_PLAN.md`。
 
 ---
 
@@ -176,8 +177,10 @@ docs/                      契约、验收记录、探针脚本
 | `docs/P2_ACCEPTANCE.md` | P2 验收记录与环境踩坑 |
 | `docs/P3_ACCEPTANCE.md` | P3 验收记录（会话状态机、探针实测、Kotlin 构建踩坑） |
 | `docs/OPEN_QUESTIONS.md` | P0 决策记录 |
-| `docs/probe_p0*.py` / `probe_p1.py` / `probe_p3.py` | 可复跑的接口探针 |
-| `docs/probe_dedup.py` / `probe_revoke.py` | 设备管理回归探针（去重 / 踢设备生效） |
+| `docs/PROJECT_OVERVIEW.md` | **P0–P8 总览**（结论、缺陷修复、已知限制、文档索引） |
+| `docs/P4_ACCEPTANCE.md` … `docs/P8_ACCEPTANCE.md` | 各阶段验收记录 |
+| `docs/RELEASE.md` | 发版指南（keystore 备份、Secrets、排查） |
+| `docs/tools/` | 一次性探针与运维脚本（历史留档，不参与构建） |
 | `docs/server_snapshot/` | 线上服务端代码快照 |
 | `docs/verify/` | 验收证据（analyze/test 输出、依赖树、APK 元信息） |
 

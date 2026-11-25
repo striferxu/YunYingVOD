@@ -15,7 +15,7 @@
 | `lib/core/auth_controller.dart` | 会话状态机（457 行）。唯一真相源，供路由守卫与 UI 订阅 |
 | `lib/features/devices/devices_page.dart` | 设备管理页。列出/踢除 app token |
 | `test/auth_test.dart` | 15 个单元测试（错误翻译、模型解析、剩余天数） |
-| `docs/probe_p3.py` | 服务端全链路探针（16 项断言） |
+| `docs/tools/probe_p3.py` | 服务端全链路探针（16 项断言） |
 
 ### 1.2 重写文件
 
@@ -86,7 +86,7 @@ connectivity_plus: ^7.3.2                   # 新增，网络状态提示
 
 ## 3. 服务端实测（16/16 通过）
 
-探针：`docs/probe_p3.py`，在服务器本机 `python3 probe_p3.py user 123456` 运行。
+探针：`docs/tools/probe_p3.py`，在服务器本机 `python3 probe_p3.py user 123456` 运行。
 
 ```
 目标: http://127.0.0.1:8000  账号: user
@@ -215,7 +215,7 @@ org.gradle.vfs.watch=false
 
 ### 7.4 回归测试
 
-新增 `docs/probe_dedup.py`，服务器实测 **5/5 通过**：
+新增 `docs/tools/probe_dedup.py`，服务器实测 **5/5 通过**：
 
 ```
 [PASS] A. 同设备签发 3 次 -> 只留 1 条  -> 实际 1 条
@@ -244,7 +244,7 @@ org.gradle.vfs.watch=false
 - `lib/core/router.dart` — 守卫
 - `lib/features/auth/login_page.dart` — 登录页
 - `lib/features/devices/devices_page.dart` — 设备管理
-- `docs/probe_p3.py` — 服务端探针
+- `docs/tools/probe_p3.py` — 服务端探针
 - `docs/verify/p3_apk_badging.txt` — APK 元信息
 - `docs/P1_APP_TOKEN_SPEC.md` — 后端接口契约（P3 客户端对接依据）
 
@@ -280,7 +280,7 @@ org.gradle.vfs.watch=false
 
 ### 8.4 回归测试
 
-新增 `docs/probe_revoke.py`，服务器实测 **11/11 通过**：
+新增 `docs/tools/probe_revoke.py`，服务器实测 **11/11 通过**：
 
 ```
 [PASS] A. token 换 session -> 200

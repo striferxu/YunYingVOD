@@ -202,7 +202,7 @@ systemctl restart siteauth && systemctl is-active siteauth
 
 ## 7. 实测结果
 
-探针脚本：`docs/probe_p1.py`（需在**服务器本机**跑，因为本机到 51play.ccwu.cc 的连接会被重置）
+探针脚本：`docs/tools/probe_p1.py`（需在**服务器本机**跑，因为本机到 51play.ccwu.cc 的连接会被重置）
 
 ### 主链路 25/25 通过
 

@@ -198,8 +198,8 @@ docs/
 ├── OPEN_QUESTIONS.md              P0 决策记录
 ├── P1_APP_TOKEN_SPEC.md           P1 产出
 ├── P2_ACCEPTANCE.md               本文件
-├── probe_p0{,b,c,d,e}.py          P0 探针
-├── probe_p1.py                    P1 探针
+├── tools/probe_p0{,b,c,d,e}.py    P0 探针（P8 后统一移入 docs/tools/）
+├── tools/probe_p1.py              P1 探针
 ├── server_snapshot/               线上代码快照
 └── verify/                        验收证据（pub_deps.json、apk 元信息等）
 ```

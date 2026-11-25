@@ -37,7 +37,7 @@
 | `android/app/build.gradle.kts` | 修改 | 接入 `key.properties` 签名；缺失时回退 debug |
 | `pubspec.yaml` | 修改 | `version: 1.0.0+1` → `0.1.0+1` |
 | `docs/RELEASE.md` | 新增 | 发布指南（备份警告 / Secrets / 发版步骤 / 排查 / 自查） |
-| `docs/set_secrets.py` | 新增 | 通过 GitHub API 写入 4 个 Actions Secrets（一次性工具） |
+| `docs/tools/set_secrets.py` | 新增 | 通过 GitHub API 写入 4 个 Actions Secrets（一次性工具） |
 | `android/vodapp.jks` | 生成 | **不入库**（`.gitignore` 已覆盖） |
 | `android/key.properties` | 生成 | **不入库** |
 
@@ -88,7 +88,7 @@ buildTypes {
 
 ### 2.4 GitHub Secrets（4 个，已配置）
 
-通过 GitHub API 写入（`docs/set_secrets.py`，PyNaCl 密封加密）：
+通过 GitHub API 写入（`docs/tools/set_secrets.py`，PyNaCl 密封加密）：
 
 ```
 KEYSTORE_BASE64      | 201
